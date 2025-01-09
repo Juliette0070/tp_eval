@@ -65,26 +65,17 @@ fn modify_image_seuil(mut img: image::RgbImage) -> Result<image::RgbImage, Image
         let r = pixel[0];
         let g = pixel[1];
         let b = pixel[2];
-        let grey = (r as f32 * 0.3 + g as f32 * 0.59 + b as f32 * 0.11) as u8;
-        pixel[0] = grey;
-        pixel[1] = grey;
-        pixel[2] = grey;
+        if r as u32+g as u32+b as u32 > 383 as u32 {
+            *pixel = WHITE;
+        } else {
+            *pixel = BLACK;
+        }
     }
 
     Ok(img)
 }
 
 fn modify_image_palette(mut img: image::RgbImage) -> Result<image::RgbImage, ImageError> {
-    for pixel in img.pixels_mut(){
-        let r = pixel[0];
-        let g = pixel[1];
-        let b = pixel[2];
-        let grey = (r as f32 * 0.3 + g as f32 * 0.59 + b as f32 * 0.11) as u8;
-        pixel[0] = grey;
-        pixel[1] = grey;
-        pixel[2] = grey;
-    }
-
     Ok(img)
 }
 
@@ -93,7 +84,7 @@ fn modify_image_palette(mut img: image::RgbImage) -> Result<image::RgbImage, Ima
 fn main() -> Result<(), ImageError>{
     let args: DitherArgs = argh::from_env();
     let path_in = args.input;
-    let mut path_out = String::new();
+    let path_out;
     if args.output.is_none() {
         path_out = "out.png".to_string();
     } else {
