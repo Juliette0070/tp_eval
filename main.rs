@@ -51,14 +51,69 @@ const YELLOW: image::Rgb<u8> = image::Rgb([255, 255, 0]);
 const MAGENTA: image::Rgb<u8> = image::Rgb([255, 0, 255]);
 const CYAN: image::Rgb<u8> = image::Rgb([0, 255, 255]);
 
+
+
+
+fn get_image(path: String) -> Result<image::RgbImage, ImageError> {
+    let img = image::open(path)?;
+    let img = img.to_rgb8();
+    Ok(img)
+}
+
+fn modify_image_seuil(mut img: image::RgbImage) -> Result<image::RgbImage, ImageError> {
+    for pixel in img.pixels_mut(){
+        let r = pixel[0];
+        let g = pixel[1];
+        let b = pixel[2];
+        let grey = (r as f32 * 0.3 + g as f32 * 0.59 + b as f32 * 0.11) as u8;
+        pixel[0] = grey;
+        pixel[1] = grey;
+        pixel[2] = grey;
+    }
+
+    Ok(img)
+}
+
+fn modify_image_palette(mut img: image::RgbImage) -> Result<image::RgbImage, ImageError> {
+    for pixel in img.pixels_mut(){
+        let r = pixel[0];
+        let g = pixel[1];
+        let b = pixel[2];
+        let grey = (r as f32 * 0.3 + g as f32 * 0.59 + b as f32 * 0.11) as u8;
+        pixel[0] = grey;
+        pixel[1] = grey;
+        pixel[2] = grey;
+    }
+
+    Ok(img)
+}
+
+
+
 fn main() -> Result<(), ImageError>{
     let args: DitherArgs = argh::from_env();
     let path_in = args.input;
+    let mut path_out = String::new();
     if args.output.is_none() {
-        let path_out = Some(<String>::from("out.png"));
+        path_out = "out.png".to_string();
     } else {
-        let path_out = args.output;
+        path_out = args.output.unwrap();
     }
+    let mode = args.mode;
+    
+    let img = get_image(path_in)?;
+
+    match mode {
+        Mode::Seuil(_) => {
+            let image = modify_image_seuil(img)?;
+            image.save(path_out)?;
+        }
+        Mode::Palette(opts) => {
+            let image = modify_image_palette(img)?;
+            image.save(path_out)?;
+        }
+    }
+
     Ok(())
 }
 
