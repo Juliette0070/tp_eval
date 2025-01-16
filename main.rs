@@ -1,7 +1,5 @@
 use argh::FromArgs;
-use image::ImageError;
-use image::Luma;
-use image::Pixel;
+use image::{ImageError, Luma, Rgb, RgbImage, Pixel};
 
 #[derive(Debug, Clone, PartialEq, FromArgs)]
 /// Convertit une image en monochrome ou vers une palette réduite de couleurs.
@@ -20,7 +18,6 @@ struct DitherArgs {
     mode: Mode
 }
 
-
 #[derive(Debug, Clone, PartialEq, FromArgs)]
 #[argh(subcommand)]
 enum Mode {
@@ -33,7 +30,6 @@ enum Mode {
 #[argh(subcommand, name="seuil")]
 /// Rendu de l’image par seuillage monochrome.
 struct OptsSeuil {}
-
 
 #[derive(Debug, Clone, PartialEq, FromArgs)]
 #[argh(subcommand, name="palette")]
@@ -50,25 +46,23 @@ struct OptsPalette {
 /// Rendu de l’image en dithering.
 struct OptsDithering {}
 
+const WHITE: Rgb<u8> = Rgb([255, 255, 255]);
+const GREY: Rgb<u8> = Rgb([127, 127, 127]);
+const BLACK: Rgb<u8> = Rgb([0, 0, 0]);
+const BLUE: Rgb<u8> = Rgb([0, 0, 255]);
+const RED: Rgb<u8> = Rgb([255, 0, 0]);
+const GREEN: Rgb<u8> = Rgb([0, 255, 0]);
+const YELLOW: Rgb<u8> = Rgb([255, 255, 0]);
+const MAGENTA: Rgb<u8> = Rgb([255, 0, 255]);
+const CYAN: Rgb<u8> = Rgb([0, 255, 255]);
 
-const WHITE: image::Rgb<u8> = image::Rgb([255, 255, 255]);
-const GREY: image::Rgb<u8> = image::Rgb([127, 127, 127]);
-const BLACK: image::Rgb<u8> = image::Rgb([0, 0, 0]);
-const BLUE: image::Rgb<u8> = image::Rgb([0, 0, 255]);
-const RED: image::Rgb<u8> = image::Rgb([255, 0, 0]);
-const GREEN: image::Rgb<u8> = image::Rgb([0, 255, 0]);
-const YELLOW: image::Rgb<u8> = image::Rgb([255, 255, 0]);
-const MAGENTA: image::Rgb<u8> = image::Rgb([255, 0, 255]);
-const CYAN: image::Rgb<u8> = image::Rgb([0, 255, 255]);
-
-
-fn get_image(path: String) -> Result<image::RgbImage, ImageError> {
+fn get_image(path: String) -> Result<RgbImage, ImageError> {
     let img = image::open(path)?;
     let img = img.to_rgb8();
     Ok(img)
 }
 
-fn modify_image_seuil(mut img: image::RgbImage) -> Result<image::RgbImage, ImageError> {
+fn modify_image_seuil(mut img: RgbImage) -> Result<RgbImage, ImageError> {
     let (width, height) = img.dimensions();
     for x in 0..width {
         for y in 0..height {
@@ -83,10 +77,18 @@ fn modify_image_seuil(mut img: image::RgbImage) -> Result<image::RgbImage, Image
     Ok(img)
 }
 
-fn modify_image_palette(mut img: image::RgbImage, n_couleurs: usize) -> Result<image::RgbImage, ImageError> {
+fn modify_image_palette(mut img: RgbImage, n_couleurs: usize) -> Result<RgbImage, ImageError> {
     let (width, height) = img.dimensions();
+    
+    // Original palette with 9 colors
     let mut palette = vec![BLACK, GREY, WHITE, RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA];
-    palette = palette.drain(0..n_couleurs).collect::<Vec<image::Rgb<u8>>>();
+    
+    // Clamp n_couleurs to the size of the palette
+    let n_couleurs = n_couleurs.min(palette.len());
+    
+    // Reduce the palette to n_couleurs colors
+    palette = palette.drain(0..n_couleurs).collect::<Vec<Rgb<u8>>>();
+    
     for x in 0..width {
         for y in 0..height {
             let pixel = img.get_pixel(x, y);
@@ -106,19 +108,58 @@ fn modify_image_palette(mut img: image::RgbImage, n_couleurs: usize) -> Result<i
     Ok(img)
 }
 
-fn modify_image_dithering(img: image::RgbImage) -> Result<image::RgbImage, ImageError> {
+fn modify_image_dithering(mut img: RgbImage) -> Result<RgbImage, ImageError> {
+    let (width, height) = img.dimensions();
+
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = img.get_pixel(x, y);
+            let avg_color = (pixel[0] as f64 + pixel[1] as f64 + pixel[2] as f64) / 3.0;
+            let new_color = if avg_color > 128.0 { WHITE } else { BLACK };
+
+            let error = [
+                pixel[0] as f64 - new_color[0] as f64,
+                pixel[1] as f64 - new_color[1] as f64,
+                pixel[2] as f64 - new_color[2] as f64,
+            ];
+
+            img.put_pixel(x, y, new_color);
+
+            // Floyd-Steinberg error diffusion
+            if x + 1 < width {
+                let neighbor = img.get_pixel_mut(x + 1, y);
+                neighbor[0] = (neighbor[0] as f64 + error[0] * 7.0 / 16.0) as u8;
+                neighbor[1] = (neighbor[1] as f64 + error[1] * 7.0 / 16.0) as u8;
+                neighbor[2] = (neighbor[2] as f64 + error[2] * 7.0 / 16.0) as u8;
+            }
+            if x > 0 && y + 1 < height {
+                let neighbor = img.get_pixel_mut(x - 1, y + 1);
+                neighbor[0] = (neighbor[0] as f64 + error[0] * 3.0 / 16.0) as u8;
+                neighbor[1] = (neighbor[1] as f64 + error[1] * 3.0 / 16.0) as u8;
+                neighbor[2] = (neighbor[2] as f64 + error[2] * 3.0 / 16.0) as u8;
+            }
+            if y + 1 < height {
+                let neighbor = img.get_pixel_mut(x, y + 1);
+                neighbor[0] = (neighbor[0] as f64 + error[0] * 5.0 / 16.0) as u8;
+                neighbor[1] = (neighbor[1] as f64 + error[1] * 5.0 / 16.0) as u8;
+                neighbor[2] = (neighbor[2] as f64 + error[2] * 5.0 / 16.0) as u8;
+            }
+            if x + 1 < width && y + 1 < height {
+                let neighbor = img.get_pixel_mut(x + 1, y + 1);
+                neighbor[0] = (neighbor[0] as f64 + error[0] * 1.0 / 16.0) as u8;
+                neighbor[1] = (neighbor[1] as f64 + error[1] * 1.0 / 16.0) as u8;
+                neighbor[2] = (neighbor[2] as f64 + error[2] * 1.0 / 16.0) as u8;
+            }
+        }
+    }
+
     Ok(img)
 }
 
 fn main() -> Result<(), ImageError>{
     let args: DitherArgs = argh::from_env();
     let path_in = args.input;
-    let path_out;
-    if args.output.is_none() {
-        path_out = "out.png".to_string();
-    } else {
-        path_out = args.output.unwrap();
-    }
+    let path_out = args.output.unwrap_or_else(|| "out.png".to_string());
     let mode = args.mode;
     
     let img = get_image(path_in)?;
@@ -140,4 +181,3 @@ fn main() -> Result<(), ImageError>{
 
     Ok(())
 }
-
